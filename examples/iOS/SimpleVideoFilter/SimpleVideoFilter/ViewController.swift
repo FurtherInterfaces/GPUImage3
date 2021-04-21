@@ -5,7 +5,7 @@ class ViewController: UIViewController {
     
     @IBOutlet weak var renderView: RenderView!
     var camera:Camera!
-    var operation:BrightnessAdjustment!
+    var operation:ToonFilterCompute!
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -13,8 +13,8 @@ class ViewController: UIViewController {
         
         do {
 //            operation = BasicOperation(fragmentFunctionName: "passthroughFragment")
-            operation = BrightnessAdjustment()
-            camera = try Camera(sessionPreset: .vga640x480)
+            operation = ToonFilterCompute()
+            camera = try Camera(sessionPreset: .hd4K3840x2160)
             camera.runBenchmark = true
             camera --> operation --> renderView
             camera.startCapture()
@@ -30,7 +30,7 @@ class ViewController: UIViewController {
 
     @IBAction func sliderValueChanged(_ sender: Any) {
         guard let slider = sender as? UISlider else { return }
-        operation.brightness = slider.value
+        operation.threshold = slider.value
     }
     
 }

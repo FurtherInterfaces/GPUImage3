@@ -133,3 +133,23 @@ extension Texture {
 func dataProviderReleaseCallback(_ context:UnsafeMutableRawPointer?, data:UnsafeRawPointer, size:Int) {
     data.deallocate()
 }
+
+public struct ThreadgroupSize {
+    public let groupCount: MTLSize
+    public let threadCount: MTLSize
+}
+
+extension Texture {
+    func getThreadgroupInfo(for pipelineState: MTLComputePipelineState) -> ThreadgroupSize {
+        let groupWidth = pipelineState.threadExecutionWidth
+        let groupHeight = pipelineState.maxTotalThreadsPerThreadgroup / groupWidth
+        
+        let threadsPerGroup = MTLSizeMake(groupWidth, groupHeight, 1)
+        let w = (self.texture.width + groupWidth - 1) / threadsPerGroup.width
+        let h = (self.texture.height + groupHeight - 1) / threadsPerGroup.height
+        let numThreadgroups = MTLSizeMake(w, h, 1)
+        
+        let size = ThreadgroupSize(groupCount: numThreadgroups, threadCount: threadsPerGroup)
+        return size
+    }
+}

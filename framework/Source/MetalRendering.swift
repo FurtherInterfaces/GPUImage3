@@ -44,21 +44,43 @@ extension MTLCommandBuffer {
         renderEncoder.setRenderPipelineState(pipelineState)
         renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
         
-        for textureIndex in 0..<inputTextures.count {
-            let currentTexture = inputTextures[UInt(textureIndex)]!
-            
-            let inputTextureCoordinates = currentTexture.textureCoordinates(for:outputOrientation, normalized:useNormalizedTextureCoordinates)
-            let textureBuffer = sharedMetalRenderingDevice.device.makeBuffer(bytes: inputTextureCoordinates,
-                                                                             length: inputTextureCoordinates.count * MemoryLayout<Float>.size,
-                                                                             options: [])!
-            textureBuffer.label = "Texture Coordinates"
+        //if let inputTextures = inputTextures {
+            for textureIndex in 0..<inputTextures.count {
+                let currentTexture = inputTextures[UInt(textureIndex)]!
+                
+                let inputTextureCoordinates = currentTexture.textureCoordinates(for:outputOrientation, normalized:useNormalizedTextureCoordinates)
+                let textureBuffer = sharedMetalRenderingDevice.device.makeBuffer(bytes: inputTextureCoordinates,
+                                                                                 length: inputTextureCoordinates.count * MemoryLayout<Float>.size,
+                                                                                 options: [])!
+                textureBuffer.label = "Texture Coordinates"
 
-            renderEncoder.setVertexBuffer(textureBuffer, offset: 0, index: 1 + textureIndex)
-            renderEncoder.setFragmentTexture(currentTexture.texture, index: textureIndex)
-        }
+                renderEncoder.setVertexBuffer(textureBuffer, offset: 0, index: 1 + textureIndex)
+                renderEncoder.setFragmentTexture(currentTexture.texture, index: textureIndex)
+            }
+        //}
         uniformSettings?.restoreShaderSettings(renderEncoder: renderEncoder)
         renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         renderEncoder.endEncoding()
+    }
+    
+    func renderQuadCompute(pipelineState:MTLComputePipelineState, uniformSettings:ShaderUniformSettings? = nil, inputTextures:[UInt:Texture], useNormalizedTextureCoordinates:Bool = true, imageVertices:[Float] = standardImageVertices, outputTexture:Texture, outputOrientation:ImageOrientation = .portrait) {
+        
+        guard let commandEncoder = self.makeComputeCommandEncoder() else {
+            fatalError("Could not create compute encoder")
+        }
+        commandEncoder.setComputePipelineState(pipelineState)
+        
+        for textureIndex in 0..<inputTextures.count {
+            let currentTexture = inputTextures[UInt(textureIndex)]!
+            commandEncoder.setTexture(currentTexture.texture, index: textureIndex)
+        }
+        
+        commandEncoder.setTexture(outputTexture.texture, index: inputTextures.count)
+        uniformSettings?.setComputeParameterBuffer(computeEncoder: commandEncoder)
+        
+        let threadgroupInfo = outputTexture.getThreadgroupInfo(for: pipelineState)
+        commandEncoder.dispatchThreadgroups(threadgroupInfo.groupCount, threadsPerThreadgroup: threadgroupInfo.threadCount)
+        commandEncoder.endEncoding()
     }
 }
 
@@ -99,3 +121,40 @@ func generateRenderPipelineState(device:MetalRenderingDevice, vertexFunctionName
         fatalError("Could not create render pipeline state for vertex:\(vertexFunctionName), fragment:\(fragmentFunctionName), error:\(error)")
     }
 }
+
+func generateComputePipelineState(device:MetalRenderingDevice, kernelName:String, operationName:String) -> (MTLComputePipelineState, [String:(Int, MTLDataType)]) {
+    guard let computeFunction = device.shaderLibrary.makeFunction(name: kernelName) else {
+        fatalError("\(operationName): could not compile compute kernel \(kernelName)")
+    }
+    
+    let descriptor = MTLComputePipelineDescriptor()
+    descriptor.computeFunction = computeFunction
+    
+    //descriptor.colorAttachments[0].pixelFormat = MTLPixelFormat.bgra8Unorm
+    //descriptor.rasterSampleCount = 1
+    //descriptor.vertexFunction = vertexFunction
+    //descriptor.fragmentFunction = fragmentFunction
+    
+    do {
+        var reflection:MTLAutoreleasedComputePipelineReflection?
+        let pipelineState = try device.device.makeComputePipelineState(descriptor: descriptor, options: [.bufferTypeInfo, .argumentInfo], reflection: &reflection)
+
+        var uniformLookupTable:[String:(Int, MTLDataType)] = [:]
+        if let computeArguments = reflection?.arguments {
+            for computeArgument in computeArguments where computeArgument.type == .buffer {
+                if
+                  (computeArgument.bufferDataType == .struct),
+                  let members = computeArgument.bufferStructType?.members.enumerated() {
+                    for (index, uniform) in members {
+                        uniformLookupTable[uniform.name] = (index, uniform.dataType)
+                    }
+                }
+            }
+        }
+        
+        return (pipelineState, uniformLookupTable)
+    } catch {
+        fatalError("Could not create compute pipeline state for kernel:\(kernelName), error:\(error)")
+    }
+}
+

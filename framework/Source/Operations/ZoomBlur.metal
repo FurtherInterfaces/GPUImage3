@@ -3,7 +3,6 @@
 using namespace metal;
 
 typedef struct {
-    float2 center;
     float size;
 } ZoomBlurUniform;
 
@@ -12,7 +11,8 @@ fragment half4 zoomBlurFragment(SingleInputVertexIO fragmentInput [[stage_in]],
                              texture2d<half> inputTexture [[texture(0)]],
                              constant ZoomBlurUniform& uniform [[buffer(1)]])
 {
-    float2 samplingOffset = 1.0/100.0 * (uniform.center - fragmentInput.textureCoordinate) * uniform.size;
+    float2 center = float2(0.5);
+    float2 samplingOffset = 1.0/100.0 * (center - fragmentInput.textureCoordinate) * uniform.size;
     
     constexpr sampler quadSampler;
     half4 color = inputTexture.sample(quadSampler, fragmentInput.textureCoordinate) * 0.18;
